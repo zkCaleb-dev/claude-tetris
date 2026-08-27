@@ -28,6 +28,8 @@ const PIECES = [
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
 
+const GRID_COLORS = { dark: '#22222e', light: '#dcdce6' };
+
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
 const nextCanvas = document.getElementById('next-canvas');
@@ -39,8 +41,10 @@ const overlay = document.getElementById('overlay');
 const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
+const themeToggle = document.getElementById('theme-toggle');
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let gridColor = GRID_COLORS.dark;
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -169,7 +173,7 @@ function drawBlock(context, x, y, colorIndex, size, alpha) {
 }
 
 function drawGrid() {
-  ctx.strokeStyle = '#22222e';
+  ctx.strokeStyle = gridColor;
   ctx.lineWidth = 0.5;
   for (let c = 1; c < COLS; c++) {
     ctx.beginPath();
@@ -256,6 +260,12 @@ function loop(ts) {
   animId = requestAnimationFrame(loop);
 }
 
+function applyTheme(isLight) {
+  document.body.classList.toggle('light', isLight);
+  gridColor = isLight ? GRID_COLORS.light : GRID_COLORS.dark;
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+}
+
 function init() {
   board = createBoard();
   score = 0;
@@ -300,5 +310,11 @@ document.addEventListener('keydown', e => {
 });
 
 restartBtn.addEventListener('click', init);
+
+themeToggle.addEventListener('change', () => applyTheme(themeToggle.checked));
+
+const savedThemeIsLight = localStorage.getItem('theme') === 'light';
+themeToggle.checked = savedThemeIsLight;
+applyTheme(savedThemeIsLight);
 
 init();
