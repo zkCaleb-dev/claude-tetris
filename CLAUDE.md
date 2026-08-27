@@ -42,7 +42,7 @@ There is nothing to build, lint, or test — reload the page to see changes.
 ## Gotchas
 
 - **Canvas dimensions are hardcoded in `index.html`.** `#board` is `300×600`; it must stay `COLS * BLOCK` × `ROWS * BLOCK`. Changing `COLS`/`ROWS`/`BLOCK` in `game.js` without editing the HTML silently breaks rendering.
-- **The loop keeps running after game over.** `endGame()` calls `cancelAnimationFrame(animId)`, but it is reached from `lockPiece()` *inside* `loop()`, which then schedules the next frame anyway. Pieces keep falling behind the overlay. Input is inert (the `keydown` handler bails on `gameOver`), so it is invisible — but don't assume the loop has stopped.
+- **The loop stops on game over via two guards.** `endGame()` calls `cancelAnimationFrame(animId)` (this covers the input-driven paths: hard/soft drop reaching `lockPiece()` from the `keydown` handler), and `loop()` bails with `if (gameOver) return;` *before* scheduling the next frame (this covers gravity reaching `lockPiece()` from inside `loop()`, where the cancel alone did nothing because the frame it cancelled was already running). Keep both — removing either lets pieces keep falling behind the overlay.
 - **One overlay serves both PAUSE and GAME OVER**, swapping `#overlay-title` / `#overlay-score` text. The restart button is always visible, including while paused.
 - **Piece selection is a uniform `Math.random()`**, not a 7-bag, so long droughts happen by design.
 
