@@ -1,0 +1,135 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+# Ediciones seguidas cancelan la corrida anterior: sin esto dos jobs pueden
+# pisarse escribiendo el mismo comentario de diagnóstico.
+concurrency:
+  group: claude-triage-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    # 1. sender != Bot  -> evita bucles si otra automatización edita el issue
+    # 2. sin '@claude'  -> evita doble ejecución con claude.yml
+    # 3. issue abierto  -> no re-triagear issues cerrados que se editan
+    if: |
+      github.event.sender.type != 'Bot' &&
+      github.event.issue.state == 'open' &&
+      !contains(github.event.issue.body, '@claude') &&
+      !contains(github.event.issue.title, '@claude')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Triage issue with Claude
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowedTools "Read,Grep,Glob,Write,Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh api:*)"'
+          prompt: |
+            Sos el triage automático de issues de este repositorio (Tetris en JS vanilla sobre canvas).
+            Issue a procesar: #${{ github.event.issue.number }} en ${{ github.repository }}.
+
+            La prosa que publiques va en español; los identificadores de código y las labels, en inglés.
+
+            ## Paso 1 - Leer
+
+            1. `gh issue view ${{ github.event.issue.number }} --json title,body,labels,author`
+            2. Leé `CLAUDE.md` del repo ANTES de mirar el código: ya documenta la arquitectura de
+               `game.js` y sus gotchas. Es tu mapa.
+            3. Recién después investigá el código real con Grep/Read sobre `game.js`, `index.html`
+               y `style.css`.
+
+            ## Paso 2 - Etiquetar
+
+            Elegí labels ÚNICAMENTE de esta lista cerrada (son las que existen en el repo):
+            `bug`, `enhancement`, `documentation`, `question`, `accessibility`, `duplicate`,
+            `good first issue`, `help wanted`, `invalid`, `wontfix`.
+
+            Reglas:
+            - Máximo 3 labels, y al menos una de tipo: `bug`, `enhancement`, `documentation` o `question`.
+            - Aplicalas con `gh issue edit ${{ github.event.issue.number }} --add-label "..."`.
+            - NUNCA uses `--remove-label`: no borres lo que puso una persona.
+            - Si la label ya está puesta no pasa nada; `--add-label` es idempotente.
+            - `good first issue` solo si el cambio cabe dentro de una función de `game.js`.
+            - `wontfix` / `invalid` solo si el issue es claramente inaccionable, nunca por incertidumbre tuya.
+            - Nunca inventes ni crees labels nuevas.
+
+            ## Paso 3 - Diagnosticar
+
+            Escribí el diagnóstico a un archivo temporal (`/tmp/triage.md`) con la herramienta Write,
+            con EXACTAMENTE esta estructura y empezando por el marcador HTML:
+
+            ```
+            <!-- claude-triage -->
+            ## Diagnóstico automático
+
+            **Tipo:** bug | mejora | documentación | pregunta
+            **Labels aplicadas:** ...
+
+            ### Resumen
+            Una o dos frases: qué pide el issue, en términos del código.
+
+            ### Dónde vive esto
+            `game.js:NN` - `nombreDeFuncion()` - por qué es el punto relevante.
+            Una línea por archivo/función. Solo lo que verificaste leyendo el código: no cites
+            números de línea que no comprobaste.
+
+            ### Causa probable / estado actual
+            Para bugs: la mecánica concreta que falla. Para mejoras: cómo funciona hoy y qué falta.
+
+            ### Enfoque propuesto
+            Pasos numerados, concretos, anclados en funciones reales del repo.
+
+            ### Riesgos y gotchas
+            Interacciones con lo documentado en CLAUDE.md: los valores de celda como índices de
+            COLORS/PIECES, la rotación transpose-then-reverse, el `r++` compensatorio de
+            `clearLines()`, las dimensiones del canvas hardcodeadas en `index.html`, el loop que
+            sigue corriendo después de `endGame()`, etc.
+
+            ### Criterios de aceptación
+            Checklist verificable abriendo `index.html` en el navegador (no hay tests ni build).
+
+            ### Confianza
+            alta | media | baja - y qué información falta si no es alta.
+            ```
+
+            El objetivo de este comentario es que quien implemente la solución después no tenga que
+            releer `game.js` desde cero. Sé concreto y anclado en el código, no genérico.
+
+            ## Paso 4 - Publicar (idempotente)
+
+            Un solo comentario de triage por issue. Buscá si ya existe el tuyo:
+
+            ```
+            gh api repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments \
+              --jq '.[] | select(.body | startswith("<!-- claude-triage -->")) | .id'
+            ```
+
+            - Si devuelve un id:
+              `gh api --method PATCH repos/${{ github.repository }}/issues/comments/<id> -F body=@/tmp/triage.md`
+            - Si no devuelve nada:
+              `gh issue comment ${{ github.event.issue.number }} --body-file /tmp/triage.md`
+
+            Siempre pasá el cuerpo por archivo (`--body-file` / `-F body=@...`), nunca inline: el
+            markdown lleva backticks y comillas que rompen el shell.
+
+            ## Restricciones
+
+            - No modifiques el cuerpo ni el título del issue.
+            - No cierres el issue, no abras PRs, no edites ningún archivo del repositorio.
+            - Si el issue es demasiado vago para diagnosticar, aplicá `question` y usá la sección
+              Resumen para pedir la información concreta que falta, en vez de inventar un diagnóstico.
