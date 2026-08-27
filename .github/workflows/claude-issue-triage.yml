@@ -110,6 +110,13 @@ jobs:
             El objetivo de este comentario es que quien implemente la solución después no tenga que
             releer `game.js` desde cero. Sé concreto y anclado en el código, no genérico.
 
+            Todo lo que publiques tiene que estar escrito en Markdown que GitHub renderice bien
+            (GitHub Flavored Markdown): encabezados con `##`/`###`, negritas con `**...**`, listas
+            con `-`, checklists con `- [ ]`, referencias a código con backticks y bloques de código
+            con triple backtick y su lenguaje (```js). Nada de HTML crudo salvo el marcador
+            `<!-- claude-triage -->` inicial, y respetá las líneas en blanco entre bloques: sin ellas
+            GitHub no separa párrafos ni listas.
+
             ## Paso 4 - Publicar (idempotente)
 
             Un solo comentario de triage por issue. Buscá si ya existe el tuyo:
